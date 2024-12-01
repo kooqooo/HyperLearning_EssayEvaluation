@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "pandas>=2.2.3",
     "torch>=2.5.1",
     "transformers>=4.46.3",
 ]
@@ -28,7 +29,7 @@ conflicts = [
 [tool.uv.sources]
 torch = [
   { index = "pytorch-cpu", extra = "cpu", marker = "platform_system != 'Darwin'" },
-  { index = "pytorch-cu124", extra = "cu124" },
+  { index = "pytorch-cu124", extra = "cu124", marker = "platform_system != 'Darwin'" },
 ]
 
 [[tool.uv.index]]
