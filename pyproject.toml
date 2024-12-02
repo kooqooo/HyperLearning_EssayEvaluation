@@ -28,8 +28,8 @@ conflicts = [
 
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cpu", extra = "cpu", marker = "platform_system != 'Darwin'" },
-  { index = "pytorch-cu124", extra = "cu124", marker = "platform_system != 'Darwin'" },
+  { index = "pytorch-cpu", extra = "cpu", marker = "platform_system == 'Linux' or platform_system == 'Windows'" },
+  { index = "pytorch-cu124", extra = "cu124", marker = "platform_system == 'Linux' or platform_system == 'Windows'" },
 ]
 
 [[tool.uv.index]]
