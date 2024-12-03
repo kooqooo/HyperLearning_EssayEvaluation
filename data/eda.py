@@ -1,8 +1,10 @@
 import os
 
 from konlpy.tag import Okt
+from kiwipiepy import Kiwi
 
 okt = Okt()
+kiwi = Kiwi(typos='basic') # 오타 교정기능 사용
 
 # 불용어 사전 불러오기
 stop_words_path = os.path.join(os.path.dirname(__file__), 'stopwords-ko.txt')
@@ -29,4 +31,5 @@ if __name__ == '__main__':
     print(f"단어 추출 : {okt.nouns(sentence)}")
     print(f"단어 개수 : {len(okt.nouns(sentence))}")
     
+
     # print(okt.phrases(sentence))
