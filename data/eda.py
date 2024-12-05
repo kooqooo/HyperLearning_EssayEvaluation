@@ -14,7 +14,7 @@ with open(stop_words_path, 'r', encoding='utf-8') as f:
     stop_words = f.readlines()
     stop_words = [word.replace('\n', '') for word in stop_words]
 
-def stop_words_filter(sentence):
+def stop_words_filter(sentence: str) -> str:
     word_tokens = kiwi.tokenize(sentence)
     word_tokens = [word.form for word in word_tokens]
     result = ''.join([word for word in word_tokens if word not in stop_words])
@@ -22,14 +22,14 @@ def stop_words_filter(sentence):
     return result
 
 # 명사 추출
-def extract_nouns(sentence):
+def extract_nouns(sentence: str) -> list[str]:
     noun_tags = ["NNG", "NNP", "NNB", "NP", "NR", "SL"]
     word_tokens = kiwi.tokenize(sentence)
     nouns = [word.form for word in word_tokens if word.tag in noun_tags]
     return nouns
 
 # 고유 명사 추출
-def extract_proper_nouns(sentence):
+def extract_proper_nouns(sentence: str) -> list[str]:
     word_tokens = kiwi.tokenize(sentence)
     proper_nouns = [word.form for word in word_tokens if word.tag == "NNP"]
     return proper_nouns
