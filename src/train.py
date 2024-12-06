@@ -139,7 +139,7 @@ class EssayScorer:
                 best_val_loss = val_loss
                 best_model = copy.deepcopy(model)
         
-        # Save the best model
+        # 최적의 모델 저장
         model_save_path = f"{output_dir}/{self.timestamp}.pth"
         torch.save(best_model.state_dict(), model_save_path)
         print(f"Best model for {score_type} saved at {model_save_path}")
@@ -322,7 +322,10 @@ if __name__ == "__main__":
     )
     
     # 예측 (LLM으로 생성한 데이터 사용)
-    new_prompts = [""]
-    new_essays = [""]
+    new_prompts = ["나의 취미"]
+    new_essays = ["""매일 아침 칼을 잡고 도마 앞에 서는 순간이 즐겁다. 식재료를 손질하는 소리, 기름이 달궈지는 소리, 재료가 익어가는 향기는 나의 하루를 특별하게 만든다. 요리는 내게 있어 단순한 취미를 넘어선 일상의 예술이다.
+처음에는 단순히 끼니를 해결하기 위해 시작한 요리였지만, 점차 새로운 레시피에 도전하고 실험하는 재미에 빠져들었다. 시장에서 제철 식재료를 고르는 일부터, 요리 과정에서 발생하는 작은 실수들까지, 모든 순간이 배움이 된다.
+특히 내가 만든 음식을 사랑하는 사람들과 나누는 순간이 가장 행복하다. 맛있다며 웃는 가족들의 표정을 볼 때면, 요리하느라 흘린 땀방울이 모두 보람으로 바뀐다. 실패해도 괜찮다. 그것 역시 더 나은 요리를 위한 과정일 뿐이니까.
+요리는 창의성과 정성이 함께 어우러지는 작업이다. 같은 재료로도 어떻게 손질하고 조리하느냐에 따라 전혀 다른 맛이 된다. 이런 작은 변화들을 시도하고 발견하는 과정이 늘 새롭고 흥미롭다. 앞으로도 이 소중한 취미와 함께하며 더 많은 맛있는 추억을 만들어가고 싶다."""]
     predictions = scorer.predict(new_prompts, new_essays)
     print(predictions)
