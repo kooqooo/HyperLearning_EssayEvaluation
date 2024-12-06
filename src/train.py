@@ -4,173 +4,13 @@ from typing import List, Dict
 import os
 
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import DataLoader, random_split
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments
 from sklearn.model_selection import KFold
 import pandas as pd
 
-class EssayDataset(Dataset):
-    def __init__(self, prompts: List[str], essays: List[str], scores: Dict[str, List[float]], 
-                 tokenizer, score_type: str, max_length=512, stride=128):
-        self.prompts = prompts
-        self.essays = essays
-        self.scores = scores
-        self.tokenizer = tokenizer
-        self.max_length = max_length
-        self.stride = stride
-        self.score_type = score_type
-        self.special_tokens_count = 3  # [CLS], [SEP], [SEP]
-
-    def __len__(self):
-        return len(self.essays)
-
-    def __getitem__(self, idx):
-        prompt = self.prompts[idx]
-        essay = self.essays[idx]
-        
-        # # 디버깅을 위한 원본 길이 출력
-        # print(f"Processing item {idx}")
-        # print(f"Original prompt length: {len(prompt)}")
-        # print(f"Original essay length: {len(essay)}")
-        
-        # 프롬프트는 전체 길이의 20%로 제한
-        max_prompt_length = (self.max_length - self.special_tokens_count) // 5
-        
-        # 프롬프트 토큰화 - truncation 적용
-        prompt_tokens = self.tokenizer.encode(
-            prompt,
-            add_special_tokens=False,
-            max_length=max_prompt_length,
-            truncation=True
-        )
-        
-        # print(f"Tokenized prompt length: {len(prompt_tokens)}")
-        
-        # 에세이에 사용할 수 있는 최대 길이 계산
-        max_essay_chunk_length = self.max_length - len(prompt_tokens) - self.special_tokens_count
-        
-        # 에세이를 청크로 나누기 전에 전체 토큰화
-        essay_tokens = self.tokenizer.encode(
-            essay,
-            add_special_tokens=False,
-            truncation=True,
-            max_length=max_essay_chunk_length
-        )
-        
-        # print(f"Tokenized essay length: {len(essay_tokens)}")
-        
-        chunks_input_ids = []
-        chunks_attention_mask = []
-        
-        # 단일 청크로 처리
-        sequence = (
-            [self.tokenizer.cls_token_id]
-            + prompt_tokens
-            + [self.tokenizer.sep_token_id]
-            + essay_tokens
-            + [self.tokenizer.sep_token_id]
-        )
-        
-        # 최대 길이 제한
-        if len(sequence) > self.max_length:
-            sequence = sequence[:self.max_length-1] + [self.tokenizer.sep_token_id]
-        
-        # print(f"Final sequence length: {len(sequence)}\n")
-        
-        # Attention mask 및 패딩
-        attention_mask = [1] * len(sequence)
-        padding_length = self.max_length - len(sequence)
-        
-        if padding_length > 0:
-            sequence += [self.tokenizer.pad_token_id] * padding_length
-            attention_mask += [0] * padding_length
-        
-        # 최종 검증
-        assert len(sequence) <= self.max_length, \
-            f"Sequence length {len(sequence)} exceeds max_length {self.max_length}"
-        
-        # 텐서 변환
-        input_ids = torch.tensor([sequence])
-        attention_mask = torch.tensor([attention_mask])
-        score = torch.tensor([self.scores[self.score_type][idx]], dtype=torch.float)
-        
-        return {
-            'input_ids': input_ids,
-            'attention_mask': attention_mask,
-            'labels': score,
-            'chunk_count': torch.tensor(1)
-        }
-
-class EssayModel(torch.nn.Module):
-    def __init__(self, model_name="klue/roberta-base"):
-        super().__init__()
-        self.bert = AutoModelForSequenceClassification.from_pretrained(
-            model_name,
-            num_labels=1
-        )
-        
-    def forward(self, input_ids, attention_mask, labels=None):
-        # 입력이 3차원(batch_size, chunk_count, seq_length)인 경우 처리
-        if len(input_ids.shape) == 3:
-            batch_size, chunk_count, seq_length = input_ids.shape
-            
-            # 청크를 batch dimension으로 펼치기
-            input_ids = input_ids.view(-1, seq_length)
-            attention_mask = attention_mask.view(-1, seq_length)
-            
-            outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-            logits = outputs.logits
-            
-            # 로짓을 다시 청크별로 그룹화
-            logits = logits.view(batch_size, chunk_count, -1)
-            
-            # 청크별 예측의 평균 계산
-            logits = logits.mean(dim=1)
-            
-            loss = None
-            if labels is not None:
-                loss_fct = torch.nn.MSELoss()
-                # chunk_count로 나누어진 labels 사용
-                labels = labels.view(batch_size, chunk_count)[:, 0]
-                loss = loss_fct(logits.squeeze(-1), labels)
-        else:
-            # 일반적인 2차원 입력 처리
-            outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-            logits = outputs.logits
-            
-            loss = None
-            if labels is not None:
-                loss_fct = torch.nn.MSELoss()
-                loss = loss_fct(logits.squeeze(-1), labels)
-            
-        return {'loss': loss, 'logits': logits} if loss is not None else logits
-
-def collate_fn(batch):
-    max_chunk_count = max(item['chunk_count'].item() for item in batch)
-    batch_size = len(batch)
-    
-    # 첫 번째 항목에서 sequence length 가져오기
-    seq_length = batch[0]['input_ids'].size(-1)
-    
-    # 배치 텐서 초기화
-    input_ids = torch.zeros((batch_size, max_chunk_count, seq_length), dtype=torch.long)
-    attention_mask = torch.zeros((batch_size, max_chunk_count, seq_length), dtype=torch.long)
-    labels = torch.zeros((batch_size, max_chunk_count), dtype=torch.float)
-    chunk_counts = torch.zeros(batch_size, dtype=torch.long)
-    
-    for i, item in enumerate(batch):
-        chunk_count = item['chunk_count'].item()
-        input_ids[i, :chunk_count] = item['input_ids']
-        attention_mask[i, :chunk_count] = item['attention_mask']
-        labels[i, :chunk_count] = item['labels']
-        chunk_counts[i] = chunk_count
-    
-    return {
-        'input_ids': input_ids,
-        'attention_mask': attention_mask,
-        'labels': labels,
-        'chunk_counts': chunk_counts
-    }
+from essay_dataset import EssayDataset
+from essay_model import EssayModel
 
 class EssayScorer:
     def __init__(
@@ -326,7 +166,7 @@ class EssayScorer:
         for fold, (train_idx, val_idx) in enumerate(kf.split(essays)):
             print(f"Training fold {fold + 1}/{n_folds}")
             
-            # Prepare datasets for current fold
+            # fold에 해당하는 데이터셋 준비
             fold_train_prompts = [prompts[i] for i in train_idx]
             fold_val_prompts = [prompts[i] for i in val_idx]
             fold_train_essays = [essays[i] for i in train_idx]
@@ -350,10 +190,10 @@ class EssayScorer:
                 self.tokenizer, score_type, self.max_length, self.stride
             )
             
-            # Initialize model for this fold
+            # 각 fold에 해당하는 데이터로 모델 학습
             model = EssayModel(self.model_name).to(self.device)
             
-            # Training arguments
+            # 하이퍼파라미터 설정
             training_args = TrainingArguments(
                 output_dir=f"{output_dir}/{self.timestamp}/fold-{fold}",
                 num_train_epochs=num_epochs,
@@ -369,7 +209,7 @@ class EssayScorer:
                 metric_for_best_model="eval_loss"
             )
             
-            # Initialize trainer
+            # Trainer 초기화
             trainer = Trainer(
                 model=model,
                 args=training_args,
@@ -377,17 +217,17 @@ class EssayScorer:
                 eval_dataset=val_dataset
             )
             
-            # Train the model
+            # 학습
             trainer.train()
             
-            # Evaluate
+            # 평가
             eval_results = trainer.evaluate()
             fold_results.append(eval_results)
             
             print(f"Fold {fold + 1} Results:")
             print(eval_results)
             
-            # Store the best model
+            # 모델 저장
             if fold == 0 or eval_results['eval_loss'] < best_loss:
                 self.models[score_type] = model
                 best_loss = eval_results['eval_loss']
@@ -427,6 +267,34 @@ class EssayScorer:
         
         return predictions
 
+def collate_fn(batch):
+    max_chunk_count = max(item['chunk_count'].item() for item in batch)
+    batch_size = len(batch)
+    
+    # 첫 번째 항목에서 sequence length 가져오기
+    seq_length = batch[0]['input_ids'].size(-1)
+    
+    # 배치 텐서 초기화
+    input_ids = torch.zeros((batch_size, max_chunk_count, seq_length), dtype=torch.long)
+    attention_mask = torch.zeros((batch_size, max_chunk_count, seq_length), dtype=torch.long)
+    labels = torch.zeros((batch_size, max_chunk_count), dtype=torch.float)
+    chunk_counts = torch.zeros(batch_size, dtype=torch.long)
+    
+    for i, item in enumerate(batch):
+        chunk_count = item['chunk_count'].item()
+        input_ids[i, :chunk_count] = item['input_ids']
+        attention_mask[i, :chunk_count] = item['attention_mask']
+        labels[i, :chunk_count] = item['labels']
+        chunk_counts[i] = chunk_count
+    
+    return {
+        'input_ids': input_ids,
+        'attention_mask': attention_mask,
+        'labels': labels,
+        'chunk_counts': chunk_counts
+    }
+
+
 # 사용 예시
 if __name__ == "__main__":
     # 데이터 준비
@@ -449,11 +317,11 @@ if __name__ == "__main__":
         prompts=prompts,
         essays=essays,
         scores=scores,
-        use_kfold=False,
-        n_folds=2
+        use_kfold=True,
+        n_folds=5
     )
     
-    # 예측
+    # 예측 (LLM으로 생성한 데이터 사용)
     new_prompts = [""]
     new_essays = [""]
     predictions = scorer.predict(new_prompts, new_essays)
