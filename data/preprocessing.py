@@ -63,6 +63,7 @@ def process_essay_data(data_dir: str) -> pd.DataFrame:
                 "main_subject": data["info"]["essay_main_subject"],
                 "len": data["info"]["essay_len"],
                 "level": data["info"]["essay_level"],
+                "student_grade": data["student"]["student_grade"],
                 "essay": paragraph,
                 "exp_score": scores["exp_score"],
                 "org_score": scores["org_score"],

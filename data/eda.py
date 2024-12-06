@@ -1,5 +1,6 @@
 import os
 
+import pandas as pd
 from kiwipiepy import Kiwi
 from kiwipiepy.utils import Stopwords
 
@@ -35,6 +36,7 @@ def extract_proper_nouns(sentence: str) -> list[str]:
     return proper_nouns
 
 if __name__ == '__main__':
+    # 사용 예시
     # 1개의 고유명사, 1개의 불용어가 포함된 문장
     sentence = '안녕하세요. 제 이름은 구희찬이고요. 지금은 점심시간입니다. 그러니까 식사 맛있게 하세요.'
     
@@ -52,3 +54,57 @@ if __name__ == '__main__':
     proper_nouns = extract_proper_nouns(sentence)
     print(f"고유 명사 추출 : {proper_nouns}")
     print(f"고유 명사 개수 : {len(proper_nouns)}")
+
+    from matplotlib import pyplot as plt
+
+    df = pd.read_csv('data/data.csv')
+    
+    # 데이터 개수
+    print(f"\n데이터 개수 : {len(df):,}")
+
+    # 단어수 분포
+    df['word_count'] = df['essay'].apply(lambda x: len(x.split()))
+    print(f"\n총 단어 수 : {df['word_count'].sum():,}")
+    print(f"평균 단어 수 : {df['word_count'].mean()}")
+    print(f"최대 단어 수 : {df['word_count'].max()}")
+    print(f"최소 단어 수 : {df['word_count'].min()}")
+    plt.hist(df['word_count'], bins=100)
+    plt.title('Word Count Distribution')
+    plt.show()
+
+    # 문장수 분포
+    df['sentence_count'] = df['essay'].apply(lambda x: x.count('.'))
+    print(f"\n총 문장 수 : {df['sentence_count'].sum():,}")
+    print(f"평균 문장 수 : {df['sentence_count'].mean()}")
+    print(f"최대 문장 수 : {df['sentence_count'].max()}")
+    print(f"최소 문장 수 : {df['sentence_count'].min()}")
+    plt.hist(df['sentence_count'], bins=100)
+    plt.title('Sentence Count Distribution')
+    plt.show()
+
+    # 고유 단어수
+    words = []
+    for essay in df['essay']:
+        words += essay.split()
+    unique_words = set(words)
+    print(f"\n고유 단어 수 : {len(unique_words):,}")
+
+    """
+    아래의 코드는 실행 시간이 오래 걸립니다.
+    """
+    # 명사 수 분포
+    df['nouns'] = df['essay'].apply(extract_nouns)
+    df['noun_count'] = df['nouns'].apply(len)
+    print(f"명사 수 : {df['noun_count'].sum()}")
+    plt.hist(df['noun_count'], bins=50)
+    plt.title('Noun Count Distribution')
+    plt.show()
+
+    # 고유 명사 수
+    proper_nouns = []
+    for essay in df['essay']:
+        proper_nouns += extract_proper_nouns(essay)
+    unique_proper_nouns = set(proper_nouns)
+    print(f"총 고유 명사 수 : {len(proper_nouns)}")
+    print(f"고유 명사 수 : {len(unique_proper_nouns)}")
+
